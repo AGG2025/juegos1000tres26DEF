@@ -32,11 +32,15 @@ public class SalaRegistro {
     @Column
     private LocalDateTime cerradaEn;
 
+    @Column(nullable = false)
+    private int maxJugadores;
+
     public SalaRegistro() {
     }
 
-    public SalaRegistro(Usuario hostUsuario) {
+    public SalaRegistro(Usuario hostUsuario, int maxJugadores) {
         this.hostUsuario = hostUsuario;
+        this.maxJugadores = maxJugadores;
     }
 
     @PrePersist
@@ -73,5 +77,13 @@ public class SalaRegistro {
 
     public void setCerradaEn(LocalDateTime cerradaEn) {
         this.cerradaEn = cerradaEn;
+    }
+
+    public int getMaxJugadores() {
+        return maxJugadores;
+    }
+
+    public void setMaxJugadores(int maxJugadores) {
+        this.maxJugadores = maxJugadores;
     }
 }

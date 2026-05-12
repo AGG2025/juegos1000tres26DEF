@@ -19,14 +19,22 @@ public class JuegoEntities {
     private int numeroJugadores;
 
     @Column(nullable = false)
-    private boolean necesitaPantalla;
+    private String nombre;
+
+    @Column
+    private String descripcion;
+
+    @Column
+    private String ruta;
 
     public JuegoEntities() {
     }
 
-    public JuegoEntities(int numeroJugadores, boolean necesitaPantalla) {
+    public JuegoEntities(int numeroJugadores, String nombre, String descripcion, String ruta) {
         this.numeroJugadores = numeroJugadores;
-        this.necesitaPantalla = necesitaPantalla;
+        this.nombre = nombre;
+        this.descripcion = descripcion;
+        this.ruta = ruta;
     }
 
     public Long getId() {
@@ -41,12 +49,28 @@ public class JuegoEntities {
         this.numeroJugadores = numeroJugadores;
     }
 
-    public boolean isNecesitaPantalla() {
-        return necesitaPantalla;
+    public String getNombre() {
+        return nombre;
     }
 
-    public void setNecesitaPantalla(boolean necesitaPantalla) {
-        this.necesitaPantalla = necesitaPantalla;
+    public void setNombre(String nombre) {
+        this.nombre = nombre;
+    }
+
+    public String getDescripcion() {
+        return descripcion;
+    }
+
+    public void setDescripcion(String descripcion) {
+        this.descripcion = descripcion;
+    }
+
+    public String getRuta() {
+        return ruta;
+    }
+
+    public void setRuta(String ruta) {
+        this.ruta = ruta;
     }
 
 }

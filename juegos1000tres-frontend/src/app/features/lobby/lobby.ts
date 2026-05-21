@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -9,10 +9,13 @@ import { Taptap } from '../games/taptap/taptap';
 import { SpaceInvadersComponent } from '../games/space-invaders/space-invaders.component';
 import { PruebaWebSocketComponent } from '../games/prueba-websocket/prueba-websocket.component';
 import { PreguntasComponent } from '../games/preguntas/preguntas.component';
+import { HandicapComponent } from '../games/handicap/handicap.component';
+import { AuthService } from '../auth/services/auth.service';
+import { AuthSession } from '../auth/models/auth-session.model';
 
 @Component({
   selector: 'app-lobby',
-  imports: [CommonModule, FormsModule, GenericButton, Taptap, PreguntasComponent, SpaceInvadersComponent, PruebaWebSocketComponent],
+  imports: [CommonModule, FormsModule, GenericButton, Taptap, PreguntasComponent, SpaceInvadersComponent, PruebaWebSocketComponent, HandicapComponent],
   templateUrl: './lobby.html',
   styleUrl: './lobby.css',
 })
@@ -27,28 +30,45 @@ export class Lobby implements OnInit, OnDestroy {
   pantallaId = '';
   juegoActual = '';
   jugadores: JugadorResumen[] = [];
+  usuarioConectadoNombre = '';
+  hostNombre = '';
   esHost = false;
   pantallaNingunoId = 'NINGUNO';
+  usuarioActual: AuthSession | null = null;
 
   juegosDisponibles = [
     { id: 'space-invaders', nombre: 'Space Invaders' },
     { id: 'prueba-websocket', nombre: 'Prueba WebSocket' },
     { id: 'taptap', nombre: 'TapTap' },
-    { id: 'preguntas', nombre: 'Preguntas' }
+    { id: 'preguntas', nombre: 'Preguntas' },
+    { id: 'handicap', nombre: 'Handicap' }
   ];
 
   private readonly apiBase = 'http://localhost:8083';
   private readonly requestOptions = { withCredentials: true };
   private polling?: Subscription;
+  private authSessionSub?: Subscription;
+  private authSub?: Subscription;
+  private jugadoresPorId = new Map<string, JugadorResumen>();
 
   constructor(
     private readonly http: HttpClient,
     private readonly router: Router,
     private readonly route: ActivatedRoute,
-    private readonly cdr: ChangeDetectorRef
+    private readonly cdr: ChangeDetectorRef,
+    private readonly auth: AuthService
   ) {}
 
   ngOnInit(): void {
+    this.authSessionSub = this.auth.loadSession().subscribe(user => {
+      this.usuarioActual = user;
+      this.actualizarNombresClave();
+    });
+    this.authSub = this.auth.currentUser$.subscribe(user => {
+      this.usuarioActual = user;
+      this.actualizarNombresClave();
+    });
+
     this.route.paramMap.subscribe(params => {
       const uuid = params.get('uuid');
 
@@ -71,12 +91,15 @@ export class Lobby implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.detenerPolling();
+    this.authSessionSub?.unsubscribe();
+    this.authSub?.unsubscribe();
   }
 
   crearSala(): void {
     this.errorUuid = '';
+    const params = this.crearParamsNombre();
 
-    this.http.get<SalaRespuesta>(`${this.apiBase}/sala/crear`, this.requestOptions).subscribe({
+    this.http.get<SalaRespuesta>(`${this.apiBase}/sala/crear`, { ...this.requestOptions, params }).subscribe({
       next: respuesta => this.navegarSala(respuesta),
       error: () => {
         this.errorUuid = 'No se pudo crear la sala';
@@ -94,8 +117,9 @@ export class Lobby implements OnInit, OnDestroy {
     }
 
     this.errorUuid = '';
+    const params = this.crearParamsNombre();
 
-    this.http.get<SalaRespuesta>(`${this.apiBase}/sala/${uuid}/unirse`, this.requestOptions).subscribe({
+    this.http.get<SalaRespuesta>(`${this.apiBase}/sala/${uuid}/unirse`, { ...this.requestOptions, params }).subscribe({
       next: respuesta => this.navegarSala(respuesta),
       error: (error: HttpErrorResponse) => {
         if (error.status === 404) {
@@ -183,6 +207,14 @@ export class Lobby implements OnInit, OnDestroy {
     });
   }
 
+  copiarUUID(): void {
+    navigator.clipboard.writeText(this.uuidActual).then(() => {
+      console.log('UUID copiado al portapapeles:', this.uuidActual);
+    }).catch(err => {
+      console.error('Error al copiar el UUID:', err);
+    });
+  }
+
   private navegarSala(respuesta: SalaRespuesta): void {
     if (!respuesta.uuid || !respuesta.jugadorId) {
       this.errorUuid = 'No se pudo entrar en la sala';
@@ -215,11 +247,17 @@ export class Lobby implements OnInit, OnDestroy {
 
   private actualizarDatos(respuesta: SalaRespuesta): void {
     this.uuidActual = respuesta.uuid;
+    if (respuesta.jugadorId) {
+      this.jugadorId = respuesta.jugadorId;
+      sessionStorage.setItem('sala.jugadorId', respuesta.jugadorId);
+    }
     this.jugadores = respuesta.jugadores || [];
+    this.jugadoresPorId = new Map(this.jugadores.map(jugador => [jugador.id, jugador]));
     this.hostId = respuesta.hostId;
     this.pantallaId = respuesta.pantallaId || '';
     this.juegoActual = respuesta.juegoActual || '';
     this.esHost = !!this.jugadorId && this.jugadorId === this.hostId;
+    this.actualizarNombresClave();
     this.cdr.detectChanges();
   }
 
@@ -241,6 +279,34 @@ export class Lobby implements OnInit, OnDestroy {
     sessionStorage.removeItem('sala.hostId');
     this.router.navigate(['/sala']);
   }
+
+  private crearParamsNombre(): HttpParams | undefined {
+    const nombre = this.usuarioActual?.nombre?.trim();
+
+    if (!nombre) {
+      return undefined;
+    }
+
+    return new HttpParams().set('nombre', nombre);
+  }
+
+
+  private actualizarNombresClave(): void {
+    this.usuarioConectadoNombre = this.obtenerNombrePorId(this.jugadorId);
+    this.hostNombre = this.obtenerNombrePorId(this.hostId);
+  }
+
+  private obtenerNombrePorId(id: string): string {
+    if (!id) {
+      return '';
+    }
+
+    const jugador = this.jugadoresPorId.get(id);
+    if (jugador?.nombre) {
+      return jugador.nombre;
+    }
+    return '';
+  }
 }
 
 interface JugadorResumen {
@@ -248,6 +314,7 @@ interface JugadorResumen {
   nombre: string;
   victorias: number;
 }
+
 
 interface SalaRespuesta {
   uuid: string;

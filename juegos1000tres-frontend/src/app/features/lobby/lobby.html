@@ -15,21 +15,25 @@
 <section
 	class="sala"
 	*ngIf="viewMode === 'sala'"
-	[class.jugando]="juegoActual === 'space-invaders' || juegoActual === 'taptap' || juegoActual === 'prueba-websocket' || juegoActual === 'adivina-el-personaje' || juegoActual === 'dibujo' || juegoActual === 'hablame-de-ti' || juegoActual === 'preguntas'"
+	[class.jugando]="juegoActual === 'space-invaders' || juegoActual === 'taptap' || juegoActual === 'prueba-websocket' || juegoActual === 'adivina-el-personaje' || juegoActual === 'dibujo' || juegoActual === 'hablame-de-ti' || juegoActual === 'preguntas' || juegoActual === 'handicap'"
 >
 	<div class="sala-layout">
 		<aside class="sala-sidebar">
-			<div class="sala-tag">
+			<div class="sala-tag" (click)="copiarUUID()" title="Haz clic para copiar">
 				<span>Sala</span>
 				<strong>{{ uuidActual }}</strong>
 			</div>
 			<div class="sala-info">
 				<p class="info-label">Usuario conectado</p>
-				<p class="info-value">{{ jugadorId || '---' }}</p>
+				<p class="info-value" [title]="jugadorId ? 'UUID: ' + jugadorId : ''">
+					{{ usuarioConectadoNombre || '---' }}
+				</p>
 			</div>
 			<div class="sala-info">
 				<p class="info-label">Creador de la sala</p>
-				<p class="info-value">{{ hostId || '---' }}</p>
+				<p class="info-value" [title]="hostId ? 'UUID: ' + hostId : ''">
+					{{ hostNombre || '---' }}
+				</p>
 			</div>
 			<div class="sala-reservado">
 				<p>Espacio reservado para nuevas secciones</p>
@@ -99,25 +103,26 @@
 					<ul class="juegos-list">
 						<li *ngFor="let juego of juegosDisponibles">
 							<button
-								class="juego-link"
+								class="juego-card"
+								type="button"
 								(click)="iniciarJuego(juego.id)"
 								[disabled]="!esHost"
 							>
-								{{ juego.nombre }}
+								<span class="juego-link">{{ juego.nombre }}</span>
+								<img
+									class="juego-icon"
+									[src]="
+										juego.id === 'space-invaders' || juego.id === 'taptap'
+											? '/img/lobby/no-creen-needed.png'
+											: '/img/lobby/screen-needed.png'
+									"
+									[alt]="
+										juego.id === 'space-invaders' || juego.id === 'taptap'
+											? 'No requiere pantalla'
+											: 'Requiere pantalla'
+									"
+								/>
 							</button>
-							<img
-								class="juego-icon"
-								[src]="
-									juego.id === 'space-invaders' || juego.id === 'taptap'
-										? '/img/lobby/no-creen-needed.png'
-										: '/img/lobby/screen-needed.png'
-								"
-								[alt]="
-									juego.id === 'space-invaders' || juego.id === 'taptap'
-										? 'No requiere pantalla'
-										: 'Requiere pantalla'
-								"
-							/>
 						</li>
 					</ul>
 					<p class="nota" *ngIf="!esHost">Solo el creador puede iniciar un juego.</p>
@@ -203,6 +208,12 @@
 			<p>La partida de Reflejos P2P se abre en una vista aparte.</p>
 			<generic-button color="gray" (click)="abrirVistaReflejosP2P()">Abrir Reflejos P2P</generic-button>
 		</div>
+	<div class="juego handicap" *ngIf="juegoActual === 'handicap'">
+		<app-handicap
+			[uuid]="uuidActual"
+			[jugadorId]="jugadorId"
+			[esHost]="esHost"
+		></app-handicap>
 	</div>
 
 </section>

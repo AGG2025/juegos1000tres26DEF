@@ -29,6 +29,7 @@ export class Lobby implements OnInit, OnDestroy {
   hostId = '';
   pantallaId = '';
   juegoActual = '';
+  juegoOcultoLocalmente = false;
   jugadores: JugadorResumen[] = [];
   usuarioConectadoNombre = '';
   hostNombre = '';
@@ -171,6 +172,8 @@ export class Lobby implements OnInit, OnDestroy {
       return;
     }
 
+    this.juegoOcultoLocalmente = false;
+
     this.http
       .post<SalaRespuesta>(
         `${this.apiBase}/sala/${this.uuidActual}/juego?actorId=${actorId}&juego=${juegoId}`,
@@ -205,6 +208,33 @@ export class Lobby implements OnInit, OnDestroy {
       next: () => this.limpiarSesion(),
       error: () => this.limpiarSesion()
     });
+  }
+
+  volverDesdeSpaceInvaders(): void {
+    if (!this.esHost || !this.uuidActual || !this.jugadorId) {
+      return;
+    }
+
+    this.http
+      .post<void>(
+        `${this.apiBase}/sala/${this.uuidActual}/juego/finalizar?actorId=${this.jugadorId}`,
+        null,
+        this.requestOptions
+      )
+      .subscribe({
+        next: () => {
+          this.juegoOcultoLocalmente = false;
+          this.actualizarEstado();
+        },
+        error: () => {
+          this.errorUuid = 'No se pudo volver a la sala';
+          this.cdr.detectChanges();
+        }
+      });
+  }
+
+  estaMostrandoJuego(): boolean {
+    return this.esJuegoActivo() && !this.juegoOcultoLocalmente;
   }
 
   copiarUUID(): void {
@@ -255,10 +285,22 @@ export class Lobby implements OnInit, OnDestroy {
     this.jugadoresPorId = new Map(this.jugadores.map(jugador => [jugador.id, jugador]));
     this.hostId = respuesta.hostId;
     this.pantallaId = respuesta.pantallaId || '';
-    this.juegoActual = respuesta.juegoActual || '';
+    const siguienteJuego = respuesta.juegoActual || '';
+    if (siguienteJuego !== this.juegoActual) {
+      this.juegoOcultoLocalmente = false;
+    }
+    this.juegoActual = siguienteJuego;
     this.esHost = !!this.jugadorId && this.jugadorId === this.hostId;
     this.actualizarNombresClave();
     this.cdr.detectChanges();
+  }
+
+  private esJuegoActivo(): boolean {
+    return this.juegoActual === 'space-invaders'
+      || this.juegoActual === 'taptap'
+      || this.juegoActual === 'prueba-websocket'
+      || this.juegoActual === 'preguntas'
+      || this.juegoActual === 'handicap';
   }
 
 

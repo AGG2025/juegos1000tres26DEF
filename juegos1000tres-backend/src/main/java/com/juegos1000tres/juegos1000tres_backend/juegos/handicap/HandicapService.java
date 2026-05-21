@@ -29,6 +29,10 @@ public class HandicapService {
     public HandicapEstadoRespuesta obtenerEstado(String uuid) {
         SalaRoom sala = salaService.obtenerSalaRoom(uuid);
         HandicapPartida partida = partidas.computeIfAbsent(uuid, key -> new HandicapPartida());
+        if (esJuegoActivo(sala) && partida.isFinalizada()) {
+            partida = new HandicapPartida();
+            partidas.put(uuid, partida);
+        }
 
         if (!esJuegoActivo(sala) && !partida.isFinalizada()) {
             throw new IllegalArgumentException("Juego no activo");

@@ -183,6 +183,14 @@ export class Lobby implements OnInit, OnDestroy {
     });
   }
 
+  copiarUUID(): void {
+    navigator.clipboard.writeText(this.uuidActual).then(() => {
+      console.log('UUID copiado al portapapeles:', this.uuidActual);
+    }).catch(err => {
+      console.error('Error al copiar el UUID:', err);
+    });
+  }
+
   private navegarSala(respuesta: SalaRespuesta): void {
     if (!respuesta.uuid || !respuesta.jugadorId) {
       this.errorUuid = 'No se pudo entrar en la sala';

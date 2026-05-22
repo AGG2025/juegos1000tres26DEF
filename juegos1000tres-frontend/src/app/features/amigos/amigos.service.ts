@@ -38,7 +38,7 @@ export class AmigosService {
    */
   enviarSolicitud(usuarioSolicitanteId: number, usuarioReceptorId: number): Observable<SolicitudAmistad> {
     return this.http.post<SolicitudAmistad>(
-      `${this.apiBase}/amigos/solicitar`,
+      `${this.apiBase}/api/amigos/solicitar`,
       { usuarioSolicitanteId, usuarioReceptorId },
       this.requestOptions
     );
@@ -49,7 +49,7 @@ export class AmigosService {
    */
   aceptarSolicitud(solicitudId: number): Observable<Amistad> {
     return this.http.put<Amistad>(
-      `${this.apiBase}/amigos/aceptar/${solicitudId}`,
+      `${this.apiBase}/api/amigos/aceptar/${solicitudId}`,
       {},
       this.requestOptions
     );
@@ -60,7 +60,7 @@ export class AmigosService {
    */
   rechazarSolicitud(solicitudId: number): Observable<SolicitudAmistad> {
     return this.http.put<SolicitudAmistad>(
-      `${this.apiBase}/amigos/rechazar/${solicitudId}`,
+      `${this.apiBase}/api/amigos/rechazar/${solicitudId}`,
       {},
       this.requestOptions
     );
@@ -71,7 +71,7 @@ export class AmigosService {
    */
   eliminarAmistad(usuarioId1: number, usuarioId2: number): Observable<void> {
     return this.http.delete<void>(
-      `${this.apiBase}/amigos/${usuarioId1}/${usuarioId2}`,
+      `${this.apiBase}/api/amigos/${usuarioId1}/${usuarioId2}`,
       this.requestOptions
     );
   }
@@ -81,7 +81,7 @@ export class AmigosService {
    */
   obtenerAmigos(usuarioId: number): Observable<Usuario[]> {
     return this.http.get<Usuario[]>(
-      `${this.apiBase}/amigos/mis-amigos/${usuarioId}`,
+      `${this.apiBase}/api/amigos/mis-amigos/${usuarioId}`,
       this.requestOptions
     );
   }
@@ -91,7 +91,7 @@ export class AmigosService {
    */
   obtenerSolicitudesRecibidas(usuarioId: number): Observable<SolicitudAmistad[]> {
     return this.http.get<SolicitudAmistad[]>(
-      `${this.apiBase}/amigos/solicitudes-recibidas/${usuarioId}`,
+      `${this.apiBase}/api/amigos/solicitudes-recibidas/${usuarioId}`,
       this.requestOptions
     );
   }
@@ -101,7 +101,7 @@ export class AmigosService {
    */
   obtenerSolicitudesEnviadas(usuarioId: number): Observable<SolicitudAmistad[]> {
     return this.http.get<SolicitudAmistad[]>(
-      `${this.apiBase}/amigos/solicitudes-enviadas/${usuarioId}`,
+      `${this.apiBase}/api/amigos/solicitudes-enviadas/${usuarioId}`,
       this.requestOptions
     );
   }
@@ -111,7 +111,7 @@ export class AmigosService {
    */
   sonAmigos(usuarioId1: number, usuarioId2: number): Observable<{ sonAmigos: boolean }> {
     return this.http.get<{ sonAmigos: boolean }>(
-      `${this.apiBase}/amigos/son-amigos/${usuarioId1}/${usuarioId2}`,
+      `${this.apiBase}/api/amigos/son-amigos/${usuarioId1}/${usuarioId2}`,
       this.requestOptions
     );
   }
@@ -121,7 +121,7 @@ export class AmigosService {
    */
   buscarPorEmail(email: string): Observable<Usuario[]> {
     return this.http.get<Usuario[]>(
-      `${this.apiBase}/amigos/buscar?email=${encodeURIComponent(email)}`,
+      `${this.apiBase}/api/amigos/buscar?email=${encodeURIComponent(email)}`,
       this.requestOptions
     );
   }

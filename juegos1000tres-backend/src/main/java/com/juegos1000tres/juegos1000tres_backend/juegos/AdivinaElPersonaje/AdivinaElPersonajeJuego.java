@@ -343,6 +343,11 @@ public class AdivinaElPersonajeJuego extends Juego {
                 .toList());
 
         for (String ganadorId : this.ganadores) {
+            try {
+                this.salaService.establecerPuntuacion(this.salaId, ganadorId, 1);
+            } catch (RuntimeException ex) {
+                // no bloquear la finalización por fallos en puntuación
+            }
             this.salaService.incrementarVictoria(this.salaId, ganadorId);
         }
 

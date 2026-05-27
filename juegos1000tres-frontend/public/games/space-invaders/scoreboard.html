@@ -150,6 +150,7 @@
       const leaderText = document.getElementById('leaderText');
       const tablaJugadores = document.getElementById('tablaJugadores');
       let recepcionActiva = false;
+      let partidaFinalizadaNotificada = false;
 
       function obtenerUrlBackend() {
         const backendUrl = params.get('backendUrl');
@@ -171,11 +172,18 @@
         if (!Array.isArray(jugadores) || jugadores.length === 0) {
           tablaJugadores.innerHTML = '<tr><td colspan="4" class="muted">Sin datos todavia.</td></tr>';
           leaderText.textContent = 'Esperando datos de partida...';
+          partidaFinalizadaNotificada = false;
           return;
         }
 
         const ordenados = jugadores
           .map((item) => ({
+            jugadorId:
+              typeof item.jugadorId === 'string'
+                ? item.jugadorId
+                : typeof item.playerId === 'string'
+                  ? item.playerId
+                  : '',
             player:
               typeof item.nombreJugador === 'string'
                 ? item.nombreJugador
@@ -197,6 +205,23 @@
         leaderText.textContent = todosMuertos
           ? `Ganador: ${lider.player} con ${lider.score} puntos`
           : `Lider: ${lider.player} con ${lider.score} puntos`;
+
+        if (todosMuertos && !partidaFinalizadaNotificada && window.parent && window.parent !== window) {
+          window.parent.postMessage(
+            {
+              type: 'SPACE_INVADERS_MATCH_END',
+              jugadorId: salaId,
+              puntuacionFinal: lider.score,
+            },
+            window.location.origin
+          );
+          partidaFinalizadaNotificada = true;
+        }
+
+        if (!todosMuertos) {
+          partidaFinalizadaNotificada = false;
+          return;
+        }
 
         tablaJugadores.innerHTML = ordenados
           .map((item, index) => {

@@ -17,9 +17,13 @@ import com.juegos1000tres.juegos1000tres_backend.modelos.Jugador;
 import com.juegos1000tres.juegos1000tres_backend.modelos.Pantalla;
 import com.juegos1000tres.juegos1000tres_backend.modelos.Sala;
 import com.juegos1000tres.juegos1000tres_backend.sala.p2p.P2PSenalizacionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class SalaService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SalaService.class);
 
     private final Map<String, SalaRoom> salas = new ConcurrentHashMap<>();
     private final SecureRandom random = new SecureRandom();
@@ -30,6 +34,7 @@ public class SalaService {
     private final DibujoManager dibujoManager;
     private final P2PSenalizacionService p2pSenalizacionService;
     private final ObjectProvider<HandicapService> handicapServiceProvider;
+    private final SalaPersistenciaService salaPersistenciaService;
 
     public SalaService(
             JuegoManager juegoManager,
@@ -38,7 +43,8 @@ public class SalaService {
             HablameDeTiManager hablameDeTiManager,
             DibujoManager dibujoManager,
             P2PSenalizacionService p2pSenalizacionService,
-            ObjectProvider<HandicapService> handicapServiceProvider) {
+            ObjectProvider<HandicapService> handicapServiceProvider,
+            SalaPersistenciaService salaPersistenciaService) {
         this.juegoManager = juegoManager;
         this.pruebaWebSocketManager = pruebaWebSocketManager;
         this.adivinaElPersonajeManager = adivinaElPersonajeManager;
@@ -46,6 +52,7 @@ public class SalaService {
         this.dibujoManager = dibujoManager;
         this.p2pSenalizacionService = p2pSenalizacionService;
         this.handicapServiceProvider = handicapServiceProvider;
+        this.salaPersistenciaService = salaPersistenciaService;
     }
 
     public SalaRespuesta crearSala(String nombre, String usuarioId, boolean esInvitado) {
@@ -56,7 +63,7 @@ public class SalaService {
             nombreFinal = "invitado";
         }
 
-        Jugador host = new Jugador(nombreFinal);
+        Jugador host = new Jugador(nombreFinal, esInvitado ? null : usuarioId);
         Sala sala = new Sala(host, new Pantalla("Lobby"));
         SalaRoom room = new SalaRoom(uuid, sala, host.getId().toString(), usuarioId);
 
@@ -65,6 +72,15 @@ public class SalaService {
         }
 
         salas.put(uuid, room);
+
+        try {
+            String hostPersistente = (usuarioId == null || usuarioId.isBlank())
+                    ? host.getId().toString()
+                    : usuarioId.trim();
+            this.salaPersistenciaService.registrarSalaCreada(uuid, host.getNombre(), hostPersistente);
+        } catch (RuntimeException ex) {
+            // La persistencia no debe bloquear la sala en memoria.
+        }
 
         return construirRespuesta(room, host.getId().toString());
     }
@@ -91,9 +107,16 @@ public class SalaService {
 
     public SalaRespuesta cambiarJuego(String uuid, String actorId, String juego) {
         SalaRoom room = obtenerSala(uuid);
+        String juegoAnterior = room.getJuegoActual();
         room.cambiarJuego(actorId, juego);
 
         try {
+            if (juegoAnterior != null && !juegoAnterior.isBlank()) {
+                this.salaPersistenciaService.registrarResultadosJuego(uuid, room.getJugadores());
+            }
+
+            this.salaPersistenciaService.registrarJuegoIniciado(uuid, juego, room.getJugadores());
+
             if ("prueba-websocket".equalsIgnoreCase(juego)) {
                 this.pruebaWebSocketManager.crearInstanciaParaSala(uuid);
             } else if ("adivina-el-personaje".equalsIgnoreCase(juego)) {
@@ -116,6 +139,16 @@ public class SalaService {
         SalaRoom room = obtenerSala(uuid);
         String juegoAntes = room.getJuegoActual();
         room.finalizarJuego(actorId);
+
+        try {
+            if (juegoAntes != null && !juegoAntes.isBlank() && !room.resultadosPersistidos()) {
+                this.salaPersistenciaService.registrarResultadosJuego(uuid, room.getJugadores());
+                room.marcarResultadosPersistidos();
+            }
+        } catch (RuntimeException ex) {
+            // no bloquear la finalizacion por un fallo de persistencia
+        }
+
         try {
             if ("prueba-websocket".equalsIgnoreCase(juegoAntes)) {
                 this.pruebaWebSocketManager.detenerInstanciaParaSala(uuid);
@@ -135,9 +168,51 @@ public class SalaService {
         limpiarEstadoJuegoEspecial(uuid, juegoAntes);
     }
 
+    /**
+     * Expose registrarResultadosJuego to allow game instances to trigger
+     * persistence of the current players' puntuaciones into historial.
+     */
+    public void registrarResultadosJuego(String uuid) {
+        SalaRoom room = obtenerSala(uuid);
+        try {
+            if (!room.resultadosPersistidos()) {
+                this.salaPersistenciaService.registrarResultadosJuego(uuid, room.getJugadores());
+                room.marcarResultadosPersistidos();
+            }
+        } catch (RuntimeException ex) {
+            // don't block game flow on persistence errors
+        }
+    }
+
     public void incrementarVictoria(String uuid, String jugadorId) {
         SalaRoom room = obtenerSala(uuid);
-        room.sumarVictoria(jugadorId);
+        LOG.info("Incrementar victoria request: sala={}, jugadorId={}", uuid, jugadorId);
+        try {
+            room.sumarVictoria(jugadorId);
+            LOG.info("Victoria incrementada: sala={}, jugadorId={}", uuid, jugadorId);
+        } catch (RuntimeException ex) {
+            LOG.warn("Fallo al incrementar victoria: sala={}, jugadorId={}, motivo={}", uuid, jugadorId, ex.getMessage());
+            throw ex;
+        }
+    }
+
+    public void incrementarPuntuacion(String uuid, String jugadorId, int puntos) {
+        if (puntos == 0) {
+            return;
+        }
+
+        SalaRoom room = obtenerSala(uuid);
+        room.sumarPuntos(jugadorId, puntos);
+    }
+
+    public void establecerPuntuacion(String uuid, String jugadorId, int puntuacion) {
+        SalaRoom room = obtenerSala(uuid);
+        room.establecerPuntuacion(jugadorId, puntuacion);
+    }
+
+    public String normalizarJugadorId(String uuid, String jugadorId, String nombreJugador) {
+        SalaRoom room = obtenerSala(uuid);
+        return room.resolverJugadorIdCanonical(jugadorId, nombreJugador);
     }
 
     public SalaRoom obtenerSalaRoom(String uuid) {
@@ -161,6 +236,15 @@ public class SalaService {
         String juegoAntes = room.getJuegoActual();
 
         if (room.esCreador(jugadorId)) {
+            try {
+                if (juegoAntes != null && !juegoAntes.isBlank() && !room.resultadosPersistidos()) {
+                    this.salaPersistenciaService.registrarResultadosJuego(uuid, room.getJugadores());
+                    room.marcarResultadosPersistidos();
+                }
+            } catch (RuntimeException ex) {
+                // ignore
+            }
+
             salas.remove(uuid);
             this.p2pSenalizacionService.limpiarSala(uuid);
             detenerJuegoActivoSiCorresponde(uuid, juegoAntes);
@@ -170,13 +254,35 @@ public class SalaService {
         room.eliminarJugador(jugadorId);
 
         if (!room.isAbierta()) {
+            try {
+                if (juegoAntes != null && !juegoAntes.isBlank() && !room.resultadosPersistidos()) {
+                    this.salaPersistenciaService.registrarResultadosJuego(uuid, room.getJugadores());
+                    room.marcarResultadosPersistidos();
+                }
+            } catch (RuntimeException ex) {
+                // ignore
+            }
+
             salas.remove(uuid);
             detenerJuegoActivoSiCorresponde(uuid, juegoAntes);
         }
     }
 
     public void apagar(String uuid) {
-        String juegoAntes = salas.containsKey(uuid) ? salas.get(uuid).getJuegoActual() : null;
+        SalaRoom room = salas.get(uuid);
+        String juegoAntes = room != null ? room.getJuegoActual() : null;
+
+        if (room != null && juegoAntes != null && !juegoAntes.isBlank()) {
+            try {
+                if (!room.resultadosPersistidos()) {
+                    this.salaPersistenciaService.registrarResultadosJuego(uuid, room.getJugadores());
+                    room.marcarResultadosPersistidos();
+                }
+            } catch (RuntimeException ex) {
+                // ignore
+            }
+        }
+
         salas.remove(uuid);
         this.p2pSenalizacionService.limpiarSala(uuid);
         detenerJuegoActivoSiCorresponde(uuid, juegoAntes);
@@ -187,7 +293,7 @@ public class SalaService {
             .map(jugador -> new JugadorRespuesta(
                 jugador.getId().toString(),
                 jugador.getNombre(),
-                jugador.getPuntuacion()
+                jugador.getVictorias()
             ))
                 .toList();
 

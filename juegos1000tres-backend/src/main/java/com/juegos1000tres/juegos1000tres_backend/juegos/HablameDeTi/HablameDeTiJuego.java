@@ -23,6 +23,7 @@ import com.juegos1000tres.juegos1000tres_backend.comunicacion.Enviable;
 import com.juegos1000tres.juegos1000tres_backend.comunicacion.Recibo;
 import com.juegos1000tres.juegos1000tres_backend.comunicacion.Traductor;
 import com.juegos1000tres.juegos1000tres_backend.modelos.Juego;
+import com.juegos1000tres.juegos1000tres_backend.sala.SalaService;
 
 public class HablameDeTiJuego extends Juego {
 
@@ -45,10 +46,13 @@ public class HablameDeTiJuego extends Juego {
     private final Map<String, String> mentirasPorJugador = new LinkedHashMap<>();
     private final Map<String, String> votosPorJugador = new LinkedHashMap<>();
     private final Set<String> mentirasNormalizadas = new LinkedHashSet<>();
+    private final Set<String> ganadores = new LinkedHashSet<>();
     private final List<String> ordenRondas = new ArrayList<>();
     private final List<OpcionRespuesta> opcionesActuales = new ArrayList<>();
     private final List<Map<String, Object>> resumenRondaActual = new ArrayList<>();
     private final Random random = new Random();
+    private final SalaService salaService;
+    private final String salaId;
 
     private FasePartida fase = FasePartida.ESPERANDO_JUGADORES;
     private boolean enCurso;
@@ -61,9 +65,11 @@ public class HablameDeTiJuego extends Juego {
     private String ultimoError = "";
     private long proximaTransicionEpochMs;
 
-    public HablameDeTiJuego(Traductor<?> conexionJugadores, Traductor<?> conexionPantalla) {
+    public HablameDeTiJuego(Traductor<?> conexionJugadores, Traductor<?> conexionPantalla, SalaService salaService, String salaId) {
         super(100, true, conexionJugadores, conexionPantalla);
         this.bancoPreguntas = cargarBancoPreguntas();
+        this.salaService = Objects.requireNonNull(salaService, "SalaService es obligatorio");
+        this.salaId = Objects.requireNonNull(salaId, "SalaId es obligatorio");
     }
 
     public Recibo<String> registrarEventosEnRecibo(Recibo<String> reciboBase) {
@@ -217,13 +223,7 @@ public class HablameDeTiJuego extends Juego {
                 this.indiceRondaActual += 1;
                 prepararRondaActual();
             } else {
-                this.fase = FasePartida.FINALIZADA;
-                this.enCurso = false;
-                this.jugadorObjetivoId = null;
-                this.preguntaDirectaActual = "";
-                this.preguntaPublicaActual = "";
-                this.respuestaOriginalActual = "";
-                this.mensajeEstado = "Partida finalizada";
+                finalizarPartida();
             }
 
             this.proximaTransicionEpochMs = 0L;
@@ -247,6 +247,8 @@ public class HablameDeTiJuego extends Juego {
         estado.put("preguntaDirecta", this.preguntaDirectaActual);
         estado.put("preguntaPublica", this.preguntaPublicaActual);
         estado.put("respuestaOriginal", faseMuestraRespuesta() ? this.respuestaOriginalActual : "");
+        estado.put("ganadores", new ArrayList<>(this.ganadores));
+        estado.put("ganadoresNombres", construirGanadoresNombres());
         estado.put("preguntasAsignadas", construirPreguntasAsignadas());
         estado.put("mentirasPendientes", construirPendientesMentiras());
         estado.put("votosPendientes", construirPendientesVotos());
@@ -313,9 +315,7 @@ public class HablameDeTiJuego extends Juego {
 
     private void prepararRondaActual() {
         if (this.indiceRondaActual >= this.ordenRondas.size()) {
-            this.fase = FasePartida.FINALIZADA;
-            this.enCurso = false;
-            this.mensajeEstado = "Partida finalizada";
+            finalizarPartida();
             return;
         }
 
@@ -373,11 +373,13 @@ public class HablameDeTiJuego extends Juego {
                 JugadorPartida jugador = this.jugadores.get(voto.getKey());
                 if (jugador != null) {
                     jugador.puntos += 20;
+                    registrarPuntuacionSala(jugador.jugadorId, 20);
                 }
             } else {
                 JugadorPartida autor = this.jugadores.get(opcion.autorJugadorId);
                 if (autor != null) {
                     autor.puntos += 10;
+                    registrarPuntuacionSala(autor.jugadorId, 10);
                 }
             }
         }
@@ -406,6 +408,63 @@ public class HablameDeTiJuego extends Juego {
         this.ultimoError = mensaje;
         this.mensajeEstado = mensaje;
         publicarEstado();
+    }
+
+    private void finalizarPartida() {
+        if (this.fase == FasePartida.FINALIZADA) {
+            return;
+        }
+
+        this.fase = FasePartida.FINALIZADA;
+        this.enCurso = false;
+        this.jugadorObjetivoId = null;
+        this.preguntaDirectaActual = "";
+        this.preguntaPublicaActual = "";
+        this.respuestaOriginalActual = "";
+        this.proximaTransicionEpochMs = 0L;
+
+        int mejorPuntuacion = this.jugadores.values().stream()
+                .mapToInt(jugador -> jugador.puntos)
+                .max()
+                .orElse(0);
+
+        this.ganadores.clear();
+        this.ganadores.addAll(this.jugadores.values().stream()
+                .filter(jugador -> jugador.puntos == mejorPuntuacion)
+                .map(jugador -> jugador.jugadorId)
+                .toList());
+
+        for (String ganadorId : this.ganadores) {
+            this.salaService.incrementarVictoria(this.salaId, ganadorId);
+        }
+
+        if (this.ganadores.size() == 1) {
+            String ganadorId = this.ganadores.iterator().next();
+            JugadorPartida ganador = this.jugadores.get(ganadorId);
+            this.mensajeEstado = ganador == null ? "Partida finalizada" : "Ganador: " + ganador.nombreJugador;
+        } else if (!this.ganadores.isEmpty()) {
+            this.mensajeEstado = "Empate entre varios jugadores";
+        } else {
+            this.mensajeEstado = "Partida finalizada";
+        }
+
+        this.ultimoError = "";
+    }
+
+    private List<String> construirGanadoresNombres() {
+        return this.ganadores.stream()
+                .map(this.jugadores::get)
+                .filter(Objects::nonNull)
+                .map(jugador -> jugador.nombreJugador)
+                .toList();
+    }
+
+    private void registrarPuntuacionSala(String jugadorId, int puntos) {
+        if (jugadorId == null || jugadorId.isBlank() || puntos == 0) {
+            return;
+        }
+
+        this.salaService.incrementarPuntuacion(this.salaId, jugadorId, puntos);
     }
 
     private void publicarEstado() {

@@ -19,6 +19,16 @@
 				class="menu-bubble"
 				[disabled]="esInvitado"
 				[attr.aria-disabled]="esInvitado"
+				(click)="irAHistorial()"
+				*ngIf="!esInvitado"
+			>
+				Historial
+			</button>
+			<button
+				type="button"
+				class="menu-bubble"
+				[disabled]="esInvitado"
+				[attr.aria-disabled]="esInvitado"
 			>
 				Estadisticas
 			</button>

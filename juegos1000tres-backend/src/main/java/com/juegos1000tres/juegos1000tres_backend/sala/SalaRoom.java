@@ -20,6 +20,7 @@ public class SalaRoom {
     private String pantallaId;
     private String juegoActual;
     private String p2pHostPeerId;
+    private boolean resultadosPersistidos;
     private int contadorNombres = 1;
     private int contadorInvitados = 1;
     private final Map<String, Integer> invitadosPorUsuario = new ConcurrentHashMap<>();
@@ -32,13 +33,14 @@ public class SalaRoom {
         this.pantallaId = creadorId;
         this.juegoActual = "";
         this.p2pHostPeerId = "";
+        this.resultadosPersistidos = false;
     }
 
     public synchronized Jugador agregarJugador(String nombre, String usuarioId, boolean esInvitado) {
         String nombreFinal = esInvitado
                 ? resolverNombreInvitado(usuarioId)
                 : resolverNombreJugador(nombre);
-        Jugador jugador = new Jugador(nombreFinal);
+        Jugador jugador = new Jugador(nombreFinal, esInvitado ? null : usuarioId);
         sala.agregarJugador(jugador);
         return jugador;
     }
@@ -124,6 +126,7 @@ public class SalaRoom {
 
         this.juegoActual = juego.trim();
         this.p2pHostPeerId = "reflejos-p2p".equalsIgnoreCase(this.juegoActual) ? UUID.randomUUID().toString() : "";
+        this.resultadosPersistidos = false;
     }
 
     public synchronized void finalizarJuego(String actorId) {
@@ -134,14 +137,110 @@ public class SalaRoom {
         this.juegoActual = "";
     }
 
+    public synchronized boolean resultadosPersistidos() {
+        return resultadosPersistidos;
+    }
+
+    public synchronized void marcarResultadosPersistidos() {
+        this.resultadosPersistidos = true;
+    }
+
     public synchronized void sumarVictoria(String jugadorId) {
-        UUID id = UUID.fromString(jugadorId);
+        String canonicalId = resolverJugadorIdCanonical(jugadorId, null);
+        UUID id = UUID.fromString(canonicalId);
         Jugador jugador = sala.getJugadores().stream()
                 .filter(item -> item.getId().equals(id))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Jugador no encontrado"));
 
-        jugador.sumarPuntos(1);
+        jugador.sumarVictoria();
+    }
+
+    public synchronized void sumarPuntos(String jugadorId, int puntos) {
+        String canonicalId = resolverJugadorIdCanonical(jugadorId, null);
+        UUID id = UUID.fromString(canonicalId);
+        Jugador jugador = sala.getJugadores().stream()
+                .filter(item -> item.getId().equals(id))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Jugador no encontrado"));
+
+        int antes = jugador.getPuntuacion();
+        jugador.sumarPuntos(puntos);
+        int despues = jugador.getPuntuacion();
+        try {
+            org.slf4j.LoggerFactory.getLogger(SalaRoom.class)
+                    .info("sumarPuntos: sala={}, jugadorId={}, antes={}, despues={}", uuid, jugador.getId(), antes, despues);
+        } catch (Throwable t) {
+            // ignore logging problems
+        }
+    }
+
+    public synchronized void establecerPuntuacion(String jugadorId, int puntuacion) {
+        String canonicalId = resolverJugadorIdCanonical(jugadorId, null);
+        UUID id = UUID.fromString(canonicalId);
+        Jugador jugador = sala.getJugadores().stream()
+                .filter(item -> item.getId().equals(id))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Jugador no encontrado"));
+
+        jugador.establecerPuntuacion(puntuacion);
+    }
+
+    public synchronized void reiniciarPuntuaciones() {
+        for (Jugador jugador : sala.getJugadores()) {
+            jugador.reiniciarPuntuacion();
+        }
+    }
+
+    public synchronized String resolverJugadorIdCanonical(String jugadorId, String nombreJugador) {
+        if (jugadorId != null && !jugadorId.isBlank()) {
+            if (Objects.equals(this.p2pHostPeerId, jugadorId.trim())) {
+                return this.creadorId;
+            }
+
+            UUID uuid = intentarParsearUuid(jugadorId);
+            if (uuid != null) {
+                boolean existe = sala.getJugadores().stream().anyMatch(item -> item.getId().equals(uuid));
+                if (existe) {
+                    return uuid.toString();
+                }
+            }
+
+            String porUsuarioId = sala.getJugadores().stream()
+                    .filter(item -> item.getUsuarioId() != null && item.getUsuarioId().equals(jugadorId.trim()))
+                    .map(item -> item.getId().toString())
+                    .findFirst()
+                    .orElse(null);
+
+            if (porUsuarioId != null) {
+                return porUsuarioId;
+            }
+        }
+
+        if (nombreJugador != null && !nombreJugador.isBlank()) {
+            String nombre = nombreJugador.trim();
+            List<Jugador> porNombre = sala.getJugadores().stream()
+                    .filter(item -> item.getNombre().equalsIgnoreCase(nombre))
+                    .toList();
+
+            if (porNombre.size() == 1) {
+                return porNombre.get(0).getId().toString();
+            }
+        }
+
+        if (jugadorId == null || jugadorId.isBlank()) {
+            throw new IllegalArgumentException("Jugador no encontrado");
+        }
+
+        return jugadorId.trim();
+    }
+
+    private UUID intentarParsearUuid(String valor) {
+        try {
+            return UUID.fromString(valor.trim());
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     public boolean esCreador(String jugadorId) {

@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.juegos1000tres.juegos1000tres_backend.auth.AuthRole;
 import com.juegos1000tres.juegos1000tres_backend.auth.AuthUser;
 import com.juegos1000tres.juegos1000tres_backend.auth.JwtService;
+import com.juegos1000tres.juegos1000tres_backend.modelos.Usuario;
+import com.juegos1000tres.juegos1000tres_backend.repositorios.UsuarioRepository;
 
 @RestController
 @RequestMapping("/sala")
@@ -22,10 +24,12 @@ public class SalaController {
 
     private final SalaService salaService;
     private final JwtService jwtService;
+    private final UsuarioRepository usuarioRepository;
 
-    public SalaController(SalaService salaService, JwtService jwtService) {
+    public SalaController(SalaService salaService, JwtService jwtService, UsuarioRepository usuarioRepository) {
         this.salaService = salaService;
         this.jwtService = jwtService;
+        this.usuarioRepository = usuarioRepository;
     }
 
     @GetMapping("/crear")
@@ -48,7 +52,15 @@ public class SalaController {
         }
 
         boolean esInvitado = user.role() == AuthRole.GUEST;
-        return new SalaActor(user.nombre(), user.email(), esInvitado);
+        if (esInvitado) {
+            return new SalaActor(user.nombre(), user.email(), true);
+        }
+
+        String usuarioId = usuarioRepository.findByEmailIgnoreCase(user.email())
+                .map(Usuario::getId)
+                .map(String::valueOf)
+                .orElse(null);
+        return new SalaActor(user.nombre(), usuarioId, false);
     }
 
     private record SalaActor(String nombre, String usuarioId, boolean esInvitado) {}
@@ -83,6 +95,14 @@ public class SalaController {
     public ResponseEntity<Void> sumarVictoria(@PathVariable String uuid,
                                               @RequestParam String jugadorId) {
         salaService.incrementarVictoria(uuid, jugadorId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{uuid}/puntuacion")
+    public ResponseEntity<Void> establecerPuntuacion(@PathVariable String uuid,
+                                                     @RequestParam String jugadorId,
+                                                     @RequestParam int puntos) {
+        salaService.establecerPuntuacion(uuid, jugadorId, puntos);
         return ResponseEntity.ok().build();
     }
 

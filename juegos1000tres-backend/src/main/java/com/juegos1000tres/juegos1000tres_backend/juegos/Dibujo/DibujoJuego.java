@@ -196,12 +196,22 @@ public class DibujoJuego extends Juego {
             Jugador autor = this.jugadores.get(this.jugadorDibujaId);
             if (autor != null) {
                 autor.puntos += 15;
+                try {
+                    this.salaService.incrementarPuntuacion(this.salaId, autor.jugadorId, 15);
+                } catch (RuntimeException ex) {
+                    // no bloquear el flujo de juego por errores de persistencia
+                }
             }
 
             // Adivinador gana el bonus
             Jugador adivinador = this.jugadores.get(jugadorId);
             if (adivinador != null) {
                 adivinador.puntos += bonus;
+                try {
+                    this.salaService.incrementarPuntuacion(this.salaId, adivinador.jugadorId, bonus);
+                } catch (RuntimeException ex) {
+                    // no bloquear el flujo de juego por errores de persistencia
+                }
                 adivinador.mensajeEstado = "¡Correcto! Has adivinado la palabra";
                 adivinador.resultadoIntento = "ACIERTO";
             }

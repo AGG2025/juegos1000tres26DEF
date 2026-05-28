@@ -177,6 +177,10 @@ export class HablameDeTiComponent implements OnInit, OnDestroy {
     return this.estado.fase === 'RESPONDIENDO_ORIGINALES';
   }
 
+  get esPantallaActiva(): boolean {
+    return this.esPantalla && !!this.pantallaId && this.pantallaId !== this.idJugadorActual;
+  }
+
   get esFaseFinalizada(): boolean {
     return this.estado.fase === 'FINALIZADA';
   }
@@ -210,7 +214,7 @@ export class HablameDeTiComponent implements OnInit, OnDestroy {
 
   private inicializarComunicacion(): void {
     const salaId = this.salaId();
-    const rol = this.esPantalla ? 'pantalla' : 'jugadores';
+    const rol = this.esPantallaActiva ? 'pantalla' : 'jugadores';
     const canal = `ws://127.0.0.1:8091/ws/salas/${encodeURIComponent(salaId)}/${rol}`;
 
     const conexion = new WebSocketConexion(salaId, canal);
@@ -241,7 +245,7 @@ export class HablameDeTiComponent implements OnInit, OnDestroy {
         continue;
       }
 
-      if (!this.esPantalla && !this.registroEnviado && this.nombresCargados && conexion?.estaConectado()) {
+      if (!this.esPantallaActiva && !this.registroEnviado && this.nombresCargados && conexion?.estaConectado()) {
         try {
           this.traductor.enviar(new RegistrarJugadorEnviable(this.idJugadorActual, this.nombreJugador));
           this.registroEnviado = true;
